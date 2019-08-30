@@ -1,0 +1,92 @@
+- name: Preparing CentOS host to install vMX
+  hosts: localhost
+  tasks:
+
+  - name: yum groupinstall "virtualization host"
+    yum:
+      name: "@^virtualization-host-environment"
+
+  - name: yum groupinstall "virtualization platform"
+    yum:
+      name: "@virtualization-platform"
+
+  - name: Enable the appropriate repositories
+    yum:
+      name: "{{ packages }}"
+    vars:
+      packages:
+      - "https://www.elrepo.org/elrepo-release-7.0-4.el7.elrepo.noarch.rpm"
+      - centos-release-scl
+
+  - name: Update currently installed packages
+    yum:
+      name: '*'
+      state: latest
+
+  - name: Install the required packages
+    yum:
+      name: "{{ required_packages }}"
+    vars:
+      required_packages:
+      - python27-python-pip
+      - python27-python-devel
+      - numactl-libs
+      - libpciaccess-devel
+      - parted-devel
+      - yajl-devel
+      - libxml2-devel
+      - glib2-devel
+      - libnl-devel
+      - libxslt-devel
+      - libyaml-devel
+      - numactl-devel
+      - redhat-lsb
+      - kmod-ixgbe
+      - libvirt-daemon-kvm
+      - numactl
+      - telnet
+      - net-tools
+
+  # I install pip differently than described in vMX install guide, because
+  # the suggested way didn't work for me (on newer CentOS versions)
+  - name: install python-pip
+    yum:
+      name: python-pip
+      state: latest
+  - name: upgrade pip
+    pip:
+     name: pip
+     state: latest
+
+  # (Optional) SR-IOV packages: see the vMX install guide for instructions
+
+  - name: Link the qemu-kvm binary to the qemu-system-x86_64 file
+    file:
+      src: /usr/libexec/qemu-kvm
+      dest: /usr/bin/qemu-system-x86_64
+      state: link
+
+  # Set up the path for the correct Python release
+  #PATH=/opt/rh/python27/root/usr/bin:$PATH
+  #export PATH
+  # Note: I doesn't do it, because it works for me without expanding PATH
+
+  # and install the PyYAML library
+  - name: install PyYAML
+    pip:
+     name:
+       - netifaces
+     state: latest
+  # due to following incompatibility error, pyyaml will not be the latest
+  # "awscli 1.14.28 has requirement PyYAML<=3.12,>=3.10,
+  # but you'll have pyyaml 5.1.2 which is incompatible"
+  - name: and install the PyYAML library
+    pip:
+     name:
+       - pyyaml
+
+  - name: Stop and disable Network Manager
+    systemd:
+      name: NetworkManager
+      state: stopped
+      enabled: no
