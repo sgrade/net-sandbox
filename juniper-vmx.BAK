@@ -1,0 +1,323 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Juniper sandbox on bare metal
+Parameters:
+  InstanceType:
+    Description: EC2 instance type (Default = m5.large)
+    Type: String
+    Default: m5.large
+    AllowedValues:
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - m5.4xlarge
+      - m5.8xlarge
+      - m5.12xlarge
+  Password:
+    Description: >-
+      Password to log in to Sandbox with user name 'admin' (at least 6
+      characters)
+    Type: String
+    NoEcho: 'true'
+    MinLength: '6'
+    AllowedPattern: '^[^"]*$'
+    ConstraintDescription: Password must have at least 6 symbols and not contain '"'
+  KeyPair:
+    Description: The name of an EC2 Key Pair to allow SSH access to instances
+    Type: 'AWS::EC2::KeyPair::KeyName'
+    MinLength: '1'
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair
+Mappings:
+  Region2Image:
+    ap-northeast-1:
+      AMI: ami-8e8847f1
+    ap-northeast-2:
+      AMI: ami-bf9c36d1
+    ap-south-1:
+      AMI: ami-1780a878
+    ap-southeast-1:
+      AMI: ami-8e0205f2
+    ap-southeast-2:
+      AMI: ami-d8c21dba
+    ca-central-1:
+      AMI: ami-e802818c
+    eu-central-1:
+      AMI: ami-dd3c0f36
+    eu-west-1:
+      AMI: ami-3548444c
+    eu-west-2:
+      AMI: ami-00846a67
+    eu-west-3:
+      AMI: ami-262e9f5b
+    sa-east-1:
+      AMI: ami-cb5803a7
+    us-east-1:
+      AMI: ami-9887c6e7
+    us-east-2:
+      AMI: ami-9c0638f9
+    us-west-1:
+      AMI: ami-4826c22b
+    us-west-2:
+      AMI: ami-3ecc8f46
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 172.31.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        - Key: Name
+          Value: sandbox-vpc
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+  IGW:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: sandbox-gw
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: b24f66aa-3d6f-44f1-b2d7-07391b361a63
+  IGWAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref IGW
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: f1907809-344c-480d-8786-4b58d2e8fc5f
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 978a6cfc-5fd2-40ff-8c52-189a8d998f57
+  RouteVPCAny:
+    Type: 'AWS::EC2::Route'
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 4aff27f8-4d0f-4d80-9478-763a9a1e3463
+  MainSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      CidrBlock: 172.31.1.0/24
+      MapPublicIpOnLaunch: 'false'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: sandbox-subnet
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 53df9df4-0104-48b9-95e8-be1dcb68de68
+  MainSubnetRouteTable:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref MainSubnet
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 59ccbcb7-c613-466a-b0a0-f27dbdb4e994
+  MasterNodeSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: sandbox security group
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp: 172.31.0.0/16
+          IpProtocol: '-1'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '443'
+          ToPort: '443'
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+      Tags:
+        - Key: Name
+          Value: sandbox-sg
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: d659bd68-f3af-4486-a1a4-53520ec4b81f
+  MasterNode:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap 
+        - Region2Image
+        - !Ref 'AWS::Region'
+        - AMI
+      InstanceType: m5.large
+      KeyName: !Ref KeyPair
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          SubnetId: !Ref MainSubnet
+          PrivateIpAddresses:
+            - PrivateIpAddress: 172.31.1.5
+              Primary: 'true'
+          GroupSet:
+            - !Ref MasterNodeSG
+          AssociatePublicIpAddress: 'true'
+      Roles:
+        - !Ref IAMRoleS3
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 8837583b-2277-4efc-a5c6-25d26bb54069
+  IAMRoleS3:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: d6fe3901-8790-4178-83aa-131944891343
+  IAMPolicyS3:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: S3Policy
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 's3:*'
+            Resource: '*'
+      Roles:
+        - !Ref IAMRoleS3
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: a771bd1b-46fc-46c6-a13d-1ad2b8c63c55
+Metadata:
+  'AWS::CloudFormation::Designer':
+    b24f66aa-3d6f-44f1-b2d7-07391b361a63:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 60
+        'y': 750
+      z: 1
+      embeds: []
+    6ef105c2-b50d-43c3-a364-3a9a87daf9d6:
+      size:
+        width: 690
+        height: 600
+      position:
+        x: 60
+        'y': 90
+      z: 1
+      embeds:
+        - d659bd68-f3af-4486-a1a4-53520ec4b81f
+        - 53df9df4-0104-48b9-95e8-be1dcb68de68
+        - 978a6cfc-5fd2-40ff-8c52-189a8d998f57
+    d659bd68-f3af-4486-a1a4-53520ec4b81f:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 90
+        'y': 450
+      z: 2
+      parent: 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+      embeds: []
+      iscontainedinside:
+        - 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+    53df9df4-0104-48b9-95e8-be1dcb68de68:
+      size:
+        width: 240
+        height: 240
+      position:
+        x: 390
+        'y': 150
+      z: 2
+      parent: 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+      embeds:
+        - 8837583b-2277-4efc-a5c6-25d26bb54069
+      iscontainedinside:
+        - 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+    8837583b-2277-4efc-a5c6-25d26bb54069:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 420
+        'y': 210
+      z: 3
+      parent: 53df9df4-0104-48b9-95e8-be1dcb68de68
+      embeds: []
+      iscontainedinside:
+        - 53df9df4-0104-48b9-95e8-be1dcb68de68
+    978a6cfc-5fd2-40ff-8c52-189a8d998f57:
+      size:
+        width: 240
+        height: 240
+      position:
+        x: 90
+        'y': 150
+      z: 2
+      parent: 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+      embeds:
+        - 4aff27f8-4d0f-4d80-9478-763a9a1e3463
+      iscontainedinside:
+        - 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+    59ccbcb7-c613-466a-b0a0-f27dbdb4e994:
+      source:
+        id: 978a6cfc-5fd2-40ff-8c52-189a8d998f57
+      target:
+        id: 53df9df4-0104-48b9-95e8-be1dcb68de68
+    f1907809-344c-480d-8786-4b58d2e8fc5f:
+      source:
+        id: 6ef105c2-b50d-43c3-a364-3a9a87daf9d6
+      target:
+        id: b24f66aa-3d6f-44f1-b2d7-07391b361a63
+    4aff27f8-4d0f-4d80-9478-763a9a1e3463:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 120
+        'y': 210
+      z: 3
+      parent: 978a6cfc-5fd2-40ff-8c52-189a8d998f57
+      embeds: []
+      isassociatedwith:
+        - b24f66aa-3d6f-44f1-b2d7-07391b361a63
+      iscontainedinside:
+        - 978a6cfc-5fd2-40ff-8c52-189a8d998f57
+      dependson:
+        - f1907809-344c-480d-8786-4b58d2e8fc5f
+    a771bd1b-46fc-46c6-a13d-1ad2b8c63c55:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -274.8301182721703
+        'y': 303.10680637733617
+      z: 0
+    d6fe3901-8790-4178-83aa-131944891343:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: -278.42235142323574
+        'y': 405.4854511827003
+      z: 0
