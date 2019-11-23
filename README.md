@@ -2,6 +2,7 @@
 
 juniper-vmx - AWS CloudFormation template, that creates stack with
 VPC and single EC2 bare-metal instance with CentOS and Ansible
+TODO: delete volume automatically after stack deletion
 
 ansible/vmx_centos_prepare.yml -
 Ansible playbook that installs prerequisites for Juniper vMX virtual machines
